@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bed Status Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    :root {
+      --light-bg: linear-gradient(135deg, #e0f7fa, #c5cae9);
+      --dark-bg: #121212;
+      --light-card: rgba(255, 255, 255, 0.95);
+      --dark-card: #1e1e1e;
+      --occupied-color: #ffe6e6;
+      --empty-color: #e6ffe6;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: var(--light-bg);
+      color: #333;
+      transition: background 0.5s, color 0.5s;
+      min-height: 100vh;
+    }
+
+    body.dark {
+      background: var(--dark-bg);
+      color: #eee;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 2.5rem;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    input[type="text"] {
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    button {
+      padding: 12px 18px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #3498db;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #2c80b4;
+    }
+
+    .dark-toggle {
+      background: #222;
+    }
+
+    .stats {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    .bed-card {
+      background: var(--light-card);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      margin-bottom: 20px;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .bed-card.occupied {
+      background-color: var(--occupied-color);
+    }
+
+    .bed-card.empty {
+      background-color: var(--empty-color);
+    }
+
+    body.dark .bed-card {
+      background: var(--dark-card);
+    }
+
+    .bed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .status {
+      font-weight: bold;
+    }
+
+    .status-occupied {
+      color: #c0392b;
+    }
+
+    .status-empty {
+      color: #27ae60;
+    }
+
+    .register-form input {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      border-radius: 6px;
+      border: none;
+    }
+
+    .register-form button {
+      background-color: #2ecc71;
+      width: 100%;
+    }
+
+    .student-info {
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1><i class="fas fa-bed"></i> Bed Status Tracker</h1>
+  <div class="container">
+    <div class="controls">
+      <input type="text" id="newBedInput" placeholder="Enter bed name" />
+      <button onclick="addBed()"><i class="fas fa-plus"></i> Add Bed</button>
+      <button onclick="toggleDarkMode()" class="dark-toggle"><i class="fas fa-adjust"></i> Toggle Dark Mode</button>
+    </div>
+
+    <div class="stats">
+      Total: <span id="totalCount">0</span> |
+      Occupied: <span id="occupiedCount">0</span> |
+      Empty: <span id="emptyCount">0</span>
+    </div>
+
+    <div id="bedsContainer"></div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBC0w6HY7nk5deA12W9noijs_tCMUjZ484",
+      authDomain: "nursing-bed-tracker.firebaseapp.com",
+      databaseURL: "https://nursing-bed-tracker-default-rtdb.firebaseio.com",
+      projectId: "nursing-bed-tracker",
+      storageBucket: "nursing-bed-tracker.appspot.com",
+      messagingSenderId: "261372657505",
+      appId: "1:261372657505:web:f43114623bec0aa9804f20"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+    }
+
+    function updateStats() {
+      db.ref().on("value", (snapshot) => {
+        const beds = snapshot.val();
+        let total = 0, occupied = 0, empty = 0;
+        if (beds) {
+          for (let key in beds) {
+            total++;
+            const status = beds[key].status;
+            if (status === "occupied") occupied++;
+            else if (status === "empty") empty++;
+          }
+        }
+        document.getElementById("totalCount").textContent = total;
+        document.getElementById("occupiedCount").textContent = occupied;
+        document.getElementById("emptyCount").textContent = empty;
+      });
+    }
+
+    function createBedElement(bedId) {
+      if (document.getElementById("bed_" + bedId)) return;
+
+      const bedDiv = document.createElement("div");
+      bedDiv.id = "bed_" + bedId;
+      bedDiv.className = "bed-card";
+
+      bedDiv.innerHTML = `
+        <div class="bed-header">
+          <h3><i class="fas fa-bed"></i> ${bedId}</h3>
+          <span class="status" id="statusText_${bedId}">Loading...</span>
+        </div>
+        <div class="actions">
+          <button onclick="setBedStatus('${bedId}', 'occupied')"><i class="fas fa-user"></i> Occupied</button>
+          <button onclick="setBedStatus('${bedId}', 'empty')"><i class="fas fa-check-circle"></i> Empty</button>
+          <button onclick="deleteBed('${bedId}')"><i class="fas fa-trash"></i> Delete</button>
+          <button id="registerBtn_${bedId}" onclick="openRegistrationForm('${bedId}')"><i class="fas fa-user-plus"></i> Register</button>
+        </div>
+        <div id="studentInfo_${bedId}" class="student-info"></div>
+      `;
+
+      document.getElementById("bedsContainer").appendChild(bedDiv);
+
+      db.ref(bedId).on("value", (snapshot) => {
+        const data = snapshot.val();
+        const status = data?.status;
+        const student = data?.student;
+
+        const statusSpan = document.getElementById("statusText_" + bedId);
+        const studentDiv = document.getElementById("studentInfo_" + bedId);
+        const registerBtn = document.getElementById("registerBtn_" + bedId);
+
+        statusSpan.textContent = status;
+        statusSpan.className = "status " + (status === "occupied" ? "status-occupied" : "status-empty");
+
+        bedDiv.classList.remove("occupied", "empty");
+        bedDiv.classList.add(status === "occupied" ? "occupied" : "empty");
+
+        registerBtn.style.display = (status === "empty") ? "inline-block" : "none";
+
+        if (student) {
+          studentDiv.innerHTML = `
+            <strong>Registered Student:</strong><br>
+            Name: ${student.fullName}<br>
+            Instructor: ${student.instructor}
+          `;
+        } else {
+          studentDiv.innerHTML = "";
+        }
+      });
+    }
+
+    function addBed() {
+      const bedId = document.getElementById("newBedInput").value.trim();
+      if (!bedId) return alert("Enter bed name");
+      if (document.getElementById("bed_" + bedId)) return alert("Bed already exists");
+
+      db.ref(bedId).set({ status: "empty" });
+      createBedElement(bedId);
+      document.getElementById("newBedInput").value = "";
+    }
+
+    function setBedStatus(bedId, status) {
+      db.ref(bedId + "/status").set(status);
+      if (status === "empty") db.ref(bedId + "/student").remove();
+    }
+
+    function deleteBed(bedId) {
+      if (confirm(`Delete bed "${bedId}"?`)) {
+        db.ref(bedId).remove();
+        const bed = document.getElementById("bed_" + bedId);
+        if (bed) bed.remove();
+      }
+    }
+
+    function openRegistrationForm(bedId) {
+      const div = document.getElementById("studentInfo_" + bedId);
+      div.innerHTML = `
+        <div class="register-form">
+          <input type="text" id="studentName_${bedId}" placeholder="Full Name" />
+          <input type="text" id="instructorName_${bedId}" placeholder="Instructor Name" />
+          <button onclick="submitRegistration('${bedId}')">Submit</button>
+        </div>
+      `;
+    }
+
+    function submitRegistration(bedId) {
+      const name = document.getElementById("studentName_" + bedId).value.trim();
+      const instructor = document.getElementById("instructorName_" + bedId).value.trim();
+      if (!name || !instructor) return alert("Fill in both fields");
+      db.ref(bedId + "/student").set({ fullName: name, instructor });
+      setBedStatus(bedId, "occupied");
+    }
+
+    // Load all beds initially
+    db.ref().once("value").then(snapshot => {
+      const beds = snapshot.val();
+      if (beds) Object.keys(beds).forEach(bedId => createBedElement(bedId));
+    });
+
+    updateStats();
+  </script>
+</body>
+</html>
